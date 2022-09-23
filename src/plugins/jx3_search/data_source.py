@@ -5,14 +5,14 @@ from typing import List, Optional, Tuple
 from httpx import AsyncClient
 from nonebot.adapters.onebot.v11.message import MessageSegment
 from src.utils.config import config
-from src.utils.db import db
+from src.utils.db import management, jx3_data, my_bot
 from src.utils.jx3_search import (JX3APP, SERENDIPITY, jx3_searcher)
 from src.utils.log import logger
 
 
 async def get_server(group_id: int) -> str:
     '''获取群绑定的区服'''
-    return db.group_conf.find_one({'_id': group_id}).get("server")
+    return management.group_conf.find_one({'_id': group_id}).get("server")
 
 
 async def get_main_server(server: str) -> Optional[str]:
@@ -22,17 +22,17 @@ async def get_main_server(server: str) -> Optional[str]:
 
 async def get_kfc():
     client = AsyncClient()
-    url = "https://www.ermaozi.cn/api/kfc?method=random&count=1"
+    url = "https://www.ermaozi.cn/api/source/kfc/1"
     req = await client.get(url=url)
     req_data = req.json()
     if req_data.get("code") == 200:
-        return req_data.get("content")[0]
+        return req_data.get("data")[0]
     return
 
 
 async def get_sand(server):
     client = AsyncClient()
-    token = db.bot_conf.find_one({"_id": 1}).get("sptoken", "")
+    token = my_bot.bot_conf.find_one({"_id": 1}).get("sptoken", "")
     for _ in range(10):
         client.headers = {"token": token, "User-Agent": "Nonebot2-jx3_bot"}
         url = "https://www.j3sp.com/api/token/check"
@@ -49,7 +49,7 @@ async def get_sand(server):
             }
             req = await client.get(url=url, params=params)
             token = req.json().get("data", {}).get("userinfo", {}).get("token")
-    db.bot_conf.update_one({"_id": 1}, {"$set": {"sptoken": token}}, True)
+    my_bot.bot_conf.update_one({"_id": 1}, {"$set": {"sptoken": token}}, True)
     url = "https://www.j3sp.com/api/sand/"
     params = {
         "serverName": server,
@@ -84,16 +84,24 @@ async def get_data_from_api(app: JX3APP, group_id: int, params: dict, ticket: bo
         # 获取ticket
 
         while True:
-            tickets = db.tickets.aggregate([{"$sample": {"size": 1}}])
-            for ticket_data in tickets:
-                ticket = ticket_data.get("ticket")
-            params["ticket"] = ticket
+            ticket = ""
+            for ticket_data in jx3_data.tickets.find():
+                tmp_ticket = ticket_data.get("ticket")
+                ticket_params = {"ticket": tmp_ticket}
+                msg, _ = await jx3_searcher.get_data_from_api(
+                    group_id, JX3APP.查有效值, ticket_params)
+                if msg == "success":
+                    ticket = tmp_ticket
+                    continue
+                jx3_data.tickets.delete_one({"ticket": tmp_ticket})
+                logger.debug("ticket 失效删除")
             if not ticket:
                 logger.debug(
                     f"群{group_id} | {app.name} | 查询失败，未找到ticket"
                 )
                 return "未找到合适的ticket，请联系管理员", {}
             try:
+                params["ticket"] = ticket
                 return await jx3_searcher.get_data_from_api(group_id, app, params)
 
             except Exception as e:

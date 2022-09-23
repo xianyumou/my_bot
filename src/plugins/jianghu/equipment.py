@@ -1,7 +1,7 @@
 # coding:utf-8
 import random
 import math
-from src.utils.db import db
+from src.utils.db import jianghu
 
 text = "翊哈天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳苍腾致"\
        "雨露结为霜金生丽水玉出昆冈剑号巨阙珠称夜光果珍李柰菜重芥姜海咸河淡鳞潜羽翔"\
@@ -184,7 +184,7 @@ def 镶嵌装备(装备, 材料, 善恶值):
     镶嵌分数 = 0
 
     材料分 = 3**(材料等级-1)
-    材料属性值 = (random.randint(1, 材料分) + random.randint(1, 材料分) + random.randint(1, 材料分))
+    材料属性值 = (random.randint(材料分//3, 材料分) + random.randint(材料分//3, 材料分) + random.randint(材料分//3, 材料分))
     材料属性值 = int(材料属性值 * (1/(1+math.e**(-善恶值/200))+0.2)) + 5
 
     for i in 附加属性项:
@@ -239,13 +239,13 @@ def 打造装备(材料, 图纸):
     材料颜色, 材料属性 = list(材料)
     图纸样式, 图纸等级 = 图纸[:2], 图纸[2:]
     名称 = "".join(random.choices(text, k=2)) + 装备类型[图纸样式 + 材料属性]
-    if db.equip.find_one({"_id": 名称}):
+    if jianghu.equip.find_one({"_id": 名称}):
         名称 = "".join(random.choices(text, k=4)) + 装备类型[图纸样式 + 材料属性]
     装备 = {"_id": 名称, "基础属性": {}}
     材料等级 = 材料等级表[材料颜色]
     材料属性值 = 3**材料等级
     图纸等级 = int(图纸等级) * 10
-    图纸属性值 = random.randint(int(图纸等级 / 2)+1, 图纸等级 * 3)
+    图纸属性值 = random.randint(int(图纸等级 / 1.5)+1, 图纸等级 * 3)
     基础属性项 = list(set(random.choices(装备基础属性[图纸样式 + 材料属性], k=2)))
     if 材料等级 < 3:
         附加数量 = random.randint(0, 1)
@@ -300,7 +300,7 @@ def 合成图纸(图纸一, 图纸二):
         return "单张图纸等级不可超过150"
     if 图纸二等级 > 图纸一等级:
         图纸二等级, 图纸一等级 = 图纸一等级, 图纸二等级
-    图纸等级 = random.randint(图纸一等级 - int(图纸二等级 * 0.4), 图纸一等级 + 图纸二等级)
+    图纸等级 = random.randint(图纸一等级 - int(图纸二等级 * 0.35), 图纸一等级 + 图纸二等级)
     return 图纸样式 + str(图纸等级)
 
 

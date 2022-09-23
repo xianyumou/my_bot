@@ -13,7 +13,7 @@ from src.utils.black_list import add_black_list, check_black_list
 from src.utils.chat import chat
 from src.utils.config import config
 from src.utils.content_check import content_check
-from src.utils.db import db
+from src.utils.db import management, my_bot
 from src.utils.log import logger
 
 data_dir = os.path.realpath(__file__ + "/../../../../data/")
@@ -36,14 +36,14 @@ async def get_main_server(server: str) -> Optional[str]:
 
 async def bind_server(group_id: int, server: str):
     '''绑定服务器'''
-    db.group_conf.update_one({'_id': group_id}, {'$set': {
+    management.group_conf.update_one({'_id': group_id}, {'$set': {
         "server": server
     }}, True)
 
 
 async def set_activity(group_id: int, activity: int):
     '''设置活跃值'''
-    db.group_conf.update_one({'_id': group_id},
+    management.group_conf.update_one({'_id': group_id},
                              {'$set': {
                                  "robot_active": activity
                              }}, True)
@@ -51,7 +51,7 @@ async def set_activity(group_id: int, activity: int):
 
 async def set_status(group_id: int, status: bool):
     '''设置机器人开关'''
-    db.group_conf.update_one({'_id': group_id},
+    management.group_conf.update_one({'_id': group_id},
                              {'$set': {
                                  "group_switch": status
                              }}, True)
@@ -60,12 +60,12 @@ async def set_status(group_id: int, status: bool):
 async def get_meau_data(group_id: int) -> dict:
     '''获取菜单数据'''
     req_data = {}
-    _con = db.group_conf.find_one({'_id': group_id})
+    _con = management.group_conf.find_one({'_id': group_id})
     if _con:
         req_data['group'] = _con
     else:
         req_data['group'] = {}
-    _con = db.plugins_info.find_one({'_id': group_id})
+    _con = my_bot.plugins_info.find_one({'_id': group_id})
     if _con:
         req_data['plugin'] = []
         for v in _con.values():
@@ -82,7 +82,7 @@ async def get_notice_status(
 ) -> bool:
     '''获取通知状态'''
 
-    _con = db.group_conf.find_one({'_id': group_id})
+    _con = management.group_conf.find_one({'_id': group_id})
     if _con:
         return _con.get(notice_type, False)
 
@@ -127,7 +127,7 @@ async def message_decoder(bot: Bot, event: GroupIncreaseNoticeEvent,
             })
 
         msg = ""
-        _con = db.group_conf.find_one({'_id': group_id})
+        _con = management.group_conf.find_one({'_id': group_id})
         if _con:
             content = _con.get(notice_type, "")
         content = content.replace("&#91;", "{")
@@ -159,7 +159,7 @@ async def handle_data_notice(group_id: int, notice_type: Literal["离群通知",
     result = content_check(content)
     if not result:
         return False
-    db.group_conf.update_one({"_id": group_id},
+    management.group_conf.update_one({"_id": group_id},
                              {"$set": {
                                  notice_type: content
                              }}, True)
@@ -170,7 +170,7 @@ async def check_add_bot_to_group(bot: Bot, user_id: int,
                                  group_id: int) -> tuple:
     '''检查加群条件'''
     bot_id = int(bot.self_id)
-    bot_info = db.bot_info.find_one({"_id": bot_id})
+    bot_info = management.bot_info.find_one({"_id": bot_id})
     if bot_info.get("master") == user_id:
         return True, None
     result, _ = await check_black_list(user_id, "QQ")
@@ -179,7 +179,7 @@ async def check_add_bot_to_group(bot: Bot, user_id: int,
     result, _ = await check_black_list(group_id, "群号")
     if result:
         return False, "群已被拉黑"
-    group_conf = db.group_conf.find_one_and_update(
+    group_conf = management.group_conf.find_one_and_update(
         filter={"_id": group_id},
         update={"$inc": {
             "add_group_num": 1
@@ -192,7 +192,7 @@ async def check_add_bot_to_group(bot: Bot, user_id: int,
             return False, "单日拉机器人超过5次, 用户拉黑1天"
     manage_group = config.bot_conf.get("manage_group", [])
     access_group_num = bot_info.get("access_group_num", 50)
-    bot_group_num = db.group_conf.count_documents({"bot_id": bot_id})
+    bot_group_num = management.group_conf.count_documents({"bot_id": bot_id})
     # 若群id不在管理群列表, 则需要进行加群条件过滤
     if group_id not in manage_group:
         if not bot_info.get("work_stat"):
@@ -204,7 +204,7 @@ async def check_add_bot_to_group(bot: Bot, user_id: int,
 
 async def add_bot_to_group(group_id: int, bot_id: int) -> None:
     '''加群动作'''
-    db.group_conf.update_one(
+    management.group_conf.update_one(
         {'_id': group_id},
         {'$set': {
             "group_switch": True,
@@ -218,7 +218,7 @@ async def add_bot_to_group(group_id: int, bot_id: int) -> None:
         plugin_name = export.get("plugin_name")
         if plugin_name is None:
             continue
-        db.plugins_info.update_one({'_id': group_id}, {
+        my_bot.plugins_info.update_one({'_id': group_id}, {
             '$set': {
                 one_plugin.name: {
                     "module_name": one_plugin.name,
@@ -243,7 +243,7 @@ async def del_bot_to_group(bot: Bot, group_id, msg=None, exit_group=True):
             # 退群
             await bot.set_group_leave(group_id=group_id, is_dismiss=False)
         # 删除数据库中的机器人记录
-        db.group_conf.update_one({
+        management.group_conf.update_one({
             '_id': group_id,
             'bot_id': bot_id
         }, {'$set': {
@@ -256,7 +256,7 @@ async def del_bot_to_group(bot: Bot, group_id, msg=None, exit_group=True):
 
 
 async def play_picture(bot: Bot, event: GroupMessageEvent, group_id):
-    _con = db.group_conf.find_one({'_id': group_id})
+    _con = management.group_conf.find_one({'_id': group_id})
     if _con:
         robot_active = _con.get("robot_active", 0)
     else:
@@ -274,10 +274,10 @@ async def play_picture(bot: Bot, event: GroupMessageEvent, group_id):
             logger.debug(f"群({group_id}) | 搭话 | {msg}")
         else:
             async with AsyncClient() as client:
-                req = await client.get(url="https://www.ermaozi.cn/api/meme?method=random&count=1")
+                req = await client.get(url="https://www.ermaozi.cn/api/source/memes/1")
                 req_data = req.json()
                 if req_data.get("code") == 200:
-                    url = req_data.get("memes")[0]
+                    url = req_data.get("data")[0]
                     req = await client.get(url=url)
                     msg = MessageSegment.image(req.content)
         await bot.send_group_msg(group_id=group_id, message=msg)

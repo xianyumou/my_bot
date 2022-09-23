@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from random import randint
-from src.utils.db import db
+from src.utils.db import jianghu
 from src.utils.log import logger
 import os
 import yaml
@@ -16,6 +16,8 @@ def init_user_info(user_id):
         "力道": 5,
         "根骨": 5,
         "元气": 5,
+        "银两": 100000,
+        "精力": 100,
         "当前气血": 600,
         "当前内力": 50,
         "当前气海": 1000,
@@ -33,12 +35,7 @@ def init_user_info(user_id):
             "饰品": "",
         },
     }
-    db.jianghu.insert_one(init_data)
-    db.user_info.update_one(
-        {"_id": user_id},
-        {"$inc": {"gold": 100000, "energy": 100}},
-        True
-    )
+    jianghu.user.insert_one(init_data)
     logger.info(f"新用户: {user_id}")
     return init_data
 
@@ -51,7 +48,7 @@ class UserInfo():
     def __init__(self, user_id, action="") -> None:
         self.user_id = user_id
         if action == "世界首领":
-            user_info = db.npc.find_one({"名称": user_id})
+            user_info = jianghu.npc.find_one({"名称": user_id})
             if not user_info:
                 return
         elif action == "秘境首领":
@@ -59,13 +56,13 @@ class UserInfo():
                 boss_data = yaml.load(f.read(), Loader=yaml.FullLoader)
                 user_info = boss_data[user_id]
         else:
-            user_info = db.jianghu.find_one({"_id": user_id})
+            user_info = jianghu.user.find_one({"_id": user_id})
             if not user_info:
                 user_info = init_user_info(user_id)
         self.基础属性 = user_info
         self.装备列表 = []
         for i in self.基础属性["装备"].values():
-            装备 = db.equip.find_one({"_id": i}, projection={"_id": 0})
+            装备 = jianghu.equip.find_one({"_id": i}, projection={"_id": 0})
             if 装备:
                 self.装备列表.append(装备)
         self.本次伤害 = 0
@@ -145,13 +142,13 @@ class UserInfo():
             self.当前状态[k] = self.初始状态[k] + self.动态状态[k]
         if self.当前气血 > self.当前状态["气血上限"]:
             self.当前气血 = self.当前状态["气血上限"]
-            db.jianghu.update_one({"_id": self.user_id},
+            jianghu.user.update_one({"_id": self.user_id},
                                   {"$set": {
                                       "当前气血": self.当前气血
                                   }}, True)
         if self.当前内力 > self.当前状态["内力上限"]:
             self.当前内力 = self.当前状态["内力上限"]
-            db.jianghu.update_one({"_id": self.user_id},
+            jianghu.user.update_one({"_id": self.user_id},
                                   {"$set": {
                                       "当前内力": self.当前内力
                                   }}, True)
@@ -180,9 +177,9 @@ class UserInfo():
         """
         self.本场战斗重伤 = False
         if self.基础属性.get("类型") in ("首领", ):
-            db_con = db.npc
+            db_con = jianghu.npc
         else:
-            db_con = db.jianghu
+            db_con = jianghu.user
 
         if self.基础属性.get("类型") == "秘境首领":
             user_info = self.基础属性
